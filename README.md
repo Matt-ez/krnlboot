@@ -1,4 +1,4 @@
-# ⚽ CальcioStats – Piattaforma Sport Analytics
+# ⚽ CаlcioStats – Piattaforma Sport Analytics
 
 > Progetto 5°DIA – Greta Viali, Matteo Bonaccini
 

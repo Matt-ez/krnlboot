@@ -23,7 +23,7 @@ export default function Sidebar() {
     <aside className="sidebar">
       <div className="sidebar-logo">
         <div className="logo-icon">⚽</div>
-        <span className="logo-text">CальcioStats</span>
+        <span className="logo-text">CalcioStats</span>
       </div>
 
       <nav>

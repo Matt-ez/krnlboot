@@ -6,6 +6,16 @@ function formatDate(d) {
   return new Date(d).toLocaleDateString('it-IT', { day:'2-digit', month:'short' });
 }
 
+function formatDateTime(d) {
+  return new Date(d).toLocaleString('it-IT', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const [data, setData] = useState(null);
@@ -36,6 +46,20 @@ export default function Dashboard() {
       </div>
 
       <h1 className="page-title">Dashboard</h1>
+
+      {data.ultimaSync && (
+        <div className="card" style={{ marginBottom:'1rem', padding:'1rem 1.25rem' }}>
+          <div style={{ fontSize:'.8rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'.4px' }}>
+            Ultimo import
+          </div>
+          <div style={{ marginTop:'.3rem', fontWeight:600 }}>
+            {data.ultimaSync.sorgente} - {formatDateTime(data.ultimaSync.created_at)}
+          </div>
+          <div style={{ marginTop:'.2rem', fontSize:'.85rem', color:'var(--text-muted)' }}>
+            {data.ultimaSync.squadre_importate} squadre, {data.ultimaSync.partite_importate} partite, {data.ultimaSync.giocatori_importati} giocatori
+          </div>
+        </div>
+      )}
 
       {/* Stat cards */}
       <div className="stat-cards">

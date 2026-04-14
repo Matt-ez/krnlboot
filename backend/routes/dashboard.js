@@ -32,6 +32,12 @@ router.get('/', authMiddleware, async (req, res) => {
     const [[{ tot_partite }]] = await db.query("SELECT COUNT(*) AS tot_partite FROM partite WHERE stato='terminata'");
     const [[{ tot_squadre }]] = await db.query('SELECT COUNT(*) AS tot_squadre FROM squadre');
     const [[{ tot_giocatori }]] = await db.query('SELECT COUNT(*) AS tot_giocatori FROM giocatori');
+    const [syncRows] = await db.query(
+      `SELECT created_at, stato, sorgente, squadre_importate, partite_importate, giocatori_importati
+       FROM sync_log
+       ORDER BY created_at DESC
+       LIMIT 1`
+    );
 
     res.json({
       topMarcatori,
@@ -39,7 +45,8 @@ router.get('/', authMiddleware, async (req, res) => {
       totPartite: tot_partite,
       totSquadre: tot_squadre,
       totGiocatori: tot_giocatori,
-      predizioni_corrette: 76
+      predizioni_corrette: 76,
+      ultimaSync: syncRows[0] || null,
     });
   } catch (err) {
     console.error('Errore GET /dashboard:', err);

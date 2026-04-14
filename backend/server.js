@@ -30,8 +30,6 @@ app.use('/matches',     matchesRoutes);
 app.use('/predictions', predictionsRoutes);
 app.use('/dashboard',   dashboardRoutes);
 
-// Health check
-app.get('/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date() }));
 
 // ── Gestione errori ─────────────────────────────────────────
 app.use((req, res) => res.status(404).json({ error: `Endpoint non trovato: ${req.path}` }));

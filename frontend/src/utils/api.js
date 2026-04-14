@@ -3,7 +3,7 @@ import axios from 'axios';
 // Con Vite il proxy è configurato in vite.config.js
 // Le chiamate a /teams, /matches ecc. vengono proxiate a http://localhost:3001
 const api = axios.create({
-  baseURL: '',
+  baseURL: 'http://localhost:3001',
   headers: { 'Content-Type': 'application/json' },
 });
 

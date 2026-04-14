@@ -40,7 +40,7 @@ export default function Login() {
           <div style={{ width:64, height:64, background:'var(--green)', borderRadius:'50%',
                         display:'flex', alignItems:'center', justifyContent:'center',
                         fontSize:'2rem', margin:'0 auto .75rem' }}>⚽</div>
-          <h1 style={{ fontFamily:'Barlow Condensed', fontSize:'1.8rem', fontWeight:800 }}>CальcioStats</h1>
+          <h1 style={{ fontFamily:'Barlow Condensed', fontSize:'1.8rem', fontWeight:800 }}>CalcioStats</h1>
           <p style={{ color:'var(--text-muted)', fontSize:'.88rem', marginTop:'.25rem' }}>Piattaforma Sport Analytics</p>
         </div>
 

@@ -36,30 +36,10 @@ export default function Dashboard() {
 
   return (
     <div>
-      {/* Topbar */}
-      <div className="topbar">
-        <div className="search-box">
-          <span style={{ color:'var(--text-muted)' }}>🔍</span>
-          <input placeholder="Cerca squadre, giocatori, partite..." />
-        </div>
-        <span style={{ color:'var(--text-muted)', fontSize:'.85rem', textTransform:'capitalize' }}>{today}</span>
-      </div>
+      
 
       <h1 className="page-title">Dashboard</h1>
 
-      {data.ultimaSync && (
-        <div className="card" style={{ marginBottom:'1rem', padding:'1rem 1.25rem' }}>
-          <div style={{ fontSize:'.8rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'.4px' }}>
-            Ultimo import
-          </div>
-          <div style={{ marginTop:'.3rem', fontWeight:600 }}>
-            {data.ultimaSync.sorgente} - {formatDateTime(data.ultimaSync.created_at)}
-          </div>
-          <div style={{ marginTop:'.2rem', fontSize:'.85rem', color:'var(--text-muted)' }}>
-            {data.ultimaSync.squadre_importate} squadre, {data.ultimaSync.partite_importate} partite, {data.ultimaSync.giocatori_importati} giocatori
-          </div>
-        </div>
-      )}
 
       {/* Stat cards */}
       <div className="stat-cards">

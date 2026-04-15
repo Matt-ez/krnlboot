@@ -26,17 +26,7 @@ export default function Teams() {
 
   return (
     <div>
-      <div className="topbar">
-        <div className="search-box">
-          <span style={{ color:'var(--text-muted)' }}>🔍</span>
-          <input
-            placeholder="Cerca squadra..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-        </div>
-      </div>
-
+    
       <h1 className="page-title">Squadre</h1>
 
       <div className="tabs">

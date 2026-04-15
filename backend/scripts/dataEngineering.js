@@ -1,132 +1,60 @@
+
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const axios = require('axios');
-const db = require('../db');
+const db    = require('../db');
 
-const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
-const RAPIDAPI_HOST =
-  process.env.RAPIDAPI_HOST || 'free-api-live-football-data.p.rapidapi.com';
-const RAPIDAPI_BASE_URL =
-  process.env.RAPIDAPI_BASE_URL || 'https://free-api-live-football-data.p.rapidapi.com';
+// ─── Configurazione ────────────────────────────────────────────────────────────
+
+const API_KEY  = process.env.FOOTBALL_DATA_API_KEY;
+const BASE_URL = 'https://api.football-data.org/v4';
+
+// Competizioni target (codici football-data.org)
+// Piano gratuito: SA (Serie A), PL, BL1, PD, FL1, CL, EC, WC
+const TARGET_COMPETITIONS = [
+  { code: 'SA', name: 'Serie A', id: 2019, countryCode: 'ITA' },
+];
+
 const SEASON = Number(
   process.env.FOOTBALL_SEASON ||
     (new Date().getMonth() >= 6 ? new Date().getFullYear() : new Date().getFullYear() - 1)
 );
-const TARGET_COUNTRY = 'Italy';
-const TARGET_LEAGUES = ['Serie A', 'Serie B'];
-const FALLBACK_LEAGUE_IDS = String(process.env.FOOTBALL_LEAGUE_IDS || '')
-  .split(',')
-  .map((value) => Number(value.trim()))
-  .filter((value) => Number.isFinite(value) && value > 0);
-const ONLY_ITALIAN_PLAYERS =
-  String(process.env.ONLY_ITALIAN_PLAYER_NATIONALITY || 'true').toLowerCase() !== 'false';
-const REQUEST_DELAY_MS = Number(process.env.FOOTBALL_REQUEST_DELAY_MS || 200);
+
+// Il free tier consente ~10 req/min → delay minimo 700ms per stare sotto al limite
+const REQUEST_DELAY_MS     = Number(process.env.FOOTBALL_REQUEST_DELAY_MS     || 700);
+const MATCH_LOOKBACK_DAYS  = Number(process.env.FOOTBALL_MATCH_LOOKBACK_DAYS  || 60);
+const MATCH_LOOKAHEAD_DAYS = Number(process.env.FOOTBALL_MATCH_LOOKAHEAD_DAYS || 14);
+const TOP_SCORERS_LIMIT    = Number(process.env.FOOTBALL_TOP_SCORERS_LIMIT    || 20);
 
 const TEAM_COLORS = [
-  '#1a9e3f',
-  '#2563eb',
-  '#dc2626',
-  '#7c3aed',
-  '#ea580c',
-  '#0891b2',
-  '#be123c',
-  '#0f766e',
-  '#4f46e5',
-  '#9333ea',
-  '#ca8a04',
-  '#16a34a',
+  '#1a9e3f', '#2563eb', '#dc2626', '#7c3aed', '#ea580c',
+  '#0891b2', '#be123c', '#0f766e', '#4f46e5', '#9333ea',
+  '#ca8a04', '#16a34a', '#b45309', '#0e7490', '#7e22ce',
+  '#15803d', '#b91c1c', '#1d4ed8', '#6d28d9', '#c2410c',
 ];
 
+// ─── Client HTTP ───────────────────────────────────────────────────────────────
+
 const apiClient = axios.create({
-  baseURL: RAPIDAPI_BASE_URL,
+  baseURL: BASE_URL,
   headers: {
-    'X-RapidAPI-Key': RAPIDAPI_KEY,
-    'X-RapidAPI-Host': RAPIDAPI_HOST,
+    'X-Auth-Token': API_KEY,
+    'Accept':       'application/json',
   },
-  timeout: 15000,
+  timeout: 20000,
 });
+
+// ─── Utilità generali ──────────────────────────────────────────────────────────
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function normalizeText(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
-}
-
-function slugifyToolPath(toolName) {
-  return `/football-${toolName
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')}`;
-}
-
-function pickValue(source, paths) {
-  for (const pathParts of paths) {
-    let current = source;
-
-    for (const part of pathParts) {
-      if (current == null) {
-        current = undefined;
-        break;
-      }
-
-      current = current[part];
-    }
-
-    if (
-      current !== undefined &&
-      current !== null &&
-      !(typeof current === 'string' && current.trim() === '')
-    ) {
-      return current;
-    }
-  }
-
-  return undefined;
-}
-
-function toNumber(value) {
-  if (value === null || value === undefined || value === '') {
-    return null;
-  }
-
-  const normalized =
-    typeof value === 'string' ? value.replace(/[^0-9.-]/g, '') : value;
-  const number = Number(normalized);
-
-  return Number.isFinite(number) ? number : null;
-}
-
-function toIsoDate(value) {
-  if (!value) {
-    return null;
-  }
-
-  const date = new Date(value);
-  if (!Number.isNaN(date.getTime())) {
-    return date.toISOString();
-  }
-
-  if (typeof value === 'string') {
-    const normalized = value.trim().replace(' ', 'T');
-    const parsed = new Date(normalized);
-    if (!Number.isNaN(parsed.getTime())) {
-      return parsed.toISOString();
-    }
-  }
-
-  return null;
-}
-
 function toMysqlDate(value) {
-  const iso = toIsoDate(value) || new Date().toISOString();
-  return iso.slice(0, 19).replace('T', ' ');
+  const date     = new Date(value);
+  const safeDate = Number.isNaN(date.getTime()) ? new Date() : date;
+  return safeDate.toISOString().slice(0, 19).replace('T', ' ');
 }
 
 function makeShortCode(teamName) {
@@ -147,727 +75,396 @@ function makeShortCode(teamName) {
 
 function splitPlayerName(fullName) {
   const cleanName = String(fullName || '').trim();
-  const parts = cleanName.split(/\s+/).filter(Boolean);
+  const parts     = cleanName.split(/\s+/).filter(Boolean);
 
   if (parts.length <= 1) {
     return { nome: cleanName || 'N/D', cognome: '' };
   }
 
   return {
-    nome: parts.slice(0, -1).join(' '),
+    nome:    parts.slice(0, -1).join(' '),
     cognome: parts.slice(-1).join(' '),
   };
 }
 
-function mapFixtureStatus(statusValue) {
-  const status = normalizeText(statusValue);
+/**
+ * Mappa lo stato partita da football-data.org al nostro ENUM
+ * FDO status: SCHEDULED, TIMED, IN_PLAY, PAUSED, FINISHED,
+ *             SUSPENDED, POSTPONED, CANCELLED, AWARDED
+ */
+function mapStatus(fdoStatus) {
+  const s = String(fdoStatus || '').toUpperCase();
 
-  if (
-    ['ft', 'finished', 'full time', 'final', 'ended', 'end'].includes(status)
-  ) {
-    return 'terminata';
-  }
+  if (['FINISHED', 'AWARDED'].includes(s))                  return 'terminata';
+  if (['IN_PLAY', 'PAUSED'].includes(s))                    return 'in_corso';
+  if (['SUSPENDED', 'POSTPONED', 'CANCELLED'].includes(s))  return 'rinviata';
 
-  if (
-    ['live', 'in play', 'inplay', '1h', '2h', 'ht', 'ongoing', 'playing'].includes(status)
-  ) {
-    return 'in_corso';
-  }
-
-  if (
-    ['postponed', 'cancelled', 'canceled', 'suspended', 'abandoned'].includes(status)
-  ) {
-    return 'rinviata';
-  }
-
-  return 'programmata';
+  return 'programmata'; // SCHEDULED, TIMED
 }
 
-function maybeParseJson(value) {
-  if (typeof value !== 'string') {
-    return value;
-  }
+/** Mappa la posizione football-data.org al nostro vocabolario */
+function mapPosition(pos) {
+  const map = {
+    Goalkeeper: 'portiere',
+    Defence:    'difensore',
+    Midfield:   'centrocampista',
+    Offence:    'attaccante',
+    Forward:    'attaccante',
+  };
+  return map[pos] || 'attaccante';
+}
 
-  const trimmed = value.trim();
-  if (!trimmed || (!trimmed.startsWith('{') && !trimmed.startsWith('['))) {
-    return value;
-  }
+// ─── Fetch con retry automatico su 429 ────────────────────────────────────────
 
+async function fetchEndpoint(urlPath, params = {}, attempt = 1) {
   try {
-    return JSON.parse(trimmed);
-  } catch (_error) {
-    return value;
+    const response = await apiClient.get(urlPath, { params });
+    return response.data;
+  } catch (err) {
+    const status = err.response?.status;
+
+    if (status === 429 && attempt <= 3) {
+      const retryAfter = Number(err.response?.headers?.['retry-after'] || 70);
+      console.warn(`  ⏳ Rate limit 429 – attendo ${retryAfter}s (tentativo ${attempt}/3)...`);
+      await wait(retryAfter * 1000);
+      return fetchEndpoint(urlPath, params, attempt + 1);
+    }
+
+    throw err;
   }
 }
 
-function collectRecords(node, acc = []) {
-  const parsed = maybeParseJson(node);
+// ─── Raccolta dati: Squadre ────────────────────────────────────────────────────
 
-  if (Array.isArray(parsed)) {
-    if (parsed.every((item) => item && typeof item === 'object')) {
-      acc.push(parsed);
-    }
-
-    parsed.forEach((item) => collectRecords(item, acc));
-    return acc;
-  }
-
-  if (!parsed || typeof parsed !== 'object') {
-    return acc;
-  }
-
-  const nestedKeys = [
-    'response',
-    'data',
-    'result',
-    'results',
-    'items',
-    'list',
-    'records',
-    'teams',
-    'players',
-    'matches',
-    'events',
-    'leagues',
-    'standings',
-    'table',
-  ];
-
-  for (const key of nestedKeys) {
-    if (key in parsed) {
-      collectRecords(parsed[key], acc);
-    }
-  }
-
-  Object.values(parsed).forEach((value) => {
-    if (value && typeof value === 'object') {
-      collectRecords(value, acc);
-    }
+/**
+ * GET /v4/competitions/{code}/standings
+ * Risposta: { standings: [ { table: [ { team: {id, name, shortName, tla, crest}, ... } ] } ] }
+ */
+async function fetchStandings(competition) {
+  console.log(`  📡 Standings ${competition.code} stagione ${SEASON}...`);
+  const data = await fetchEndpoint(`/competitions/${competition.code}/standings`, {
+    season: SEASON,
   });
+  await wait(REQUEST_DELAY_MS);
 
-  return acc;
+  const table = data?.standings?.[0]?.table || [];
+
+  return table.map((row) => ({
+    api_team_id:      row.team.id,
+    nome:             row.team.name,
+    tla:              row.team.tla  || null,
+    crest_url:        row.team.crest || null,
+    competition_code: competition.code,
+    competition_name: competition.name,
+    competition_id:   competition.id,
+    // dettagli extra arricchiti in seguito con fetchTeamDetail
+    citta:            null,
+    anno_fondazione:  null,
+    stadio:           null,
+    paese:            null,
+  }));
 }
 
-function unwrapResponseData(payload) {
-  const arrays = collectRecords(payload);
-  const best = arrays.sort((left, right) => right.length - left.length)[0];
-  if (best) {
-    return best;
-  }
-
-  if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
-    return [payload];
-  }
-
-  return [];
-}
-
-async function requestCandidate(label, candidates) {
-  let lastError = null;
-
-  for (const candidate of candidates) {
-    try {
-      const response = await apiClient.get(candidate.path, { params: candidate.params });
-      const records = unwrapResponseData(response.data);
-
-      if (records.length > 0) {
-        return { records, path: candidate.path };
-      }
-
-      lastError = new Error(`Risposta vuota da ${candidate.path}`);
-    } catch (error) {
-      lastError = error;
-    }
-
+/**
+ * GET /v4/teams/{id}
+ * Arricchisce la squadra con stadio, città e anno fondazione.
+ */
+async function fetchTeamDetail(teamId) {
+  try {
+    const data = await fetchEndpoint(`/teams/${teamId}`);
     await wait(REQUEST_DELAY_MS);
+
+    // L'indirizzo è una stringa libera tipo "Via X, Città, CAP"
+    const addressParts = (data.address || '').split(',');
+    const citta        = addressParts.length >= 2
+      ? addressParts[addressParts.length - 2]?.trim() || null
+      : null;
+
+    return {
+      citta:           citta,
+      anno_fondazione: data.founded    || null,
+      stadio:          data.venue      || null,
+      paese:           data.area?.name || null,
+    };
+  } catch (err) {
+    // Alcuni team non sono disponibili nel piano free → gestiamo silenziosamente
+    console.warn(`  ⚠️  Dettaglio team ${teamId} non disponibile (${err.response?.status ?? err.message})`);
+    await wait(REQUEST_DELAY_MS);
+    return { citta: null, anno_fondazione: null, stadio: null, paese: null };
   }
-
-  throw lastError || new Error(`Nessun endpoint valido per ${label}`);
 }
 
-function normalizeLeague(rawLeague) {
-  return {
-    id: toNumber(
-      pickValue(rawLeague, [
-        ['id'],
-        ['leagueid'],
-        ['league_id'],
-        ['leagueId'],
-        ['league', 'id'],
-      ])
-    ),
-    nome: pickValue(rawLeague, [
-      ['nome'],
-      ['league_name'],
-      ['name'],
-      ['leagueName'],
-      ['league', 'name'],
-    ]),
-    paese: pickValue(rawLeague, [
-      ['paese'],
-      ['country_name'],
-      ['country'],
-      ['countryName'],
-      ['league_country'],
-      ['league', 'country'],
-    ]),
-  };
-}
+// ─── Raccolta dati: Partite ────────────────────────────────────────────────────
 
-function normalizeTeam(rawTeam, leagueName, leagueId) {
-  return {
-    api_team_id: toNumber(
-      pickValue(rawTeam, [
-        ['teamid'],
-        ['team_id'],
-        ['teamId'],
-        ['id'],
-        ['team', 'id'],
-      ])
-    ),
-    nome: pickValue(rawTeam, [
-      ['team_name'],
-      ['name'],
-      ['team', 'name'],
-      ['club_name'],
-    ]),
-    paese: pickValue(rawTeam, [
-      ['country_name'],
-      ['country'],
-      ['team_country'],
-      ['countryName'],
-      ['team', 'country'],
-    ]) || TARGET_COUNTRY,
-    citta: pickValue(rawTeam, [
-      ['city'],
-      ['venue_city'],
-      ['stadium_city'],
-      ['location'],
-    ]),
-    anno_fondazione: toNumber(
-      pickValue(rawTeam, [['founded'], ['team_founded'], ['foundation_year']])
-    ),
-    stadio: pickValue(rawTeam, [
-      ['stadium_name'],
-      ['venue_name'],
-      ['stadium'],
-      ['venue'],
-      ['ground_name'],
-    ]),
-    logo_url: pickValue(rawTeam, [
-      ['team_logo'],
-      ['logo'],
-      ['team_badge'],
-      ['badge'],
-      ['image'],
-      ['team', 'logo'],
-    ]),
-    campionato: leagueName,
-    league_id: leagueId,
-  };
-}
+/**
+ * GET /v4/competitions/{code}/matches
+ * Risposta: { matches: [ { id, utcDate, status, matchday, venue,
+ *                          homeTeam: {id}, awayTeam: {id},
+ *                          score: { fullTime: {home, away} } } ] }
+ */
+async function fetchMatches(competition) {
+  const today    = new Date();
+  const dateFrom = new Date(today);
+  dateFrom.setDate(today.getDate() - MATCH_LOOKBACK_DAYS);
+  const dateTo   = new Date(today);
+  dateTo.setDate(today.getDate() + MATCH_LOOKAHEAD_DAYS);
 
-function normalizeFixture(rawFixture, league) {
-  const eventId = toNumber(
-    pickValue(rawFixture, [
-      ['eventid'],
-      ['event_id'],
-      ['matchid'],
-      ['match_id'],
-      ['fixtureid'],
-      ['fixture_id'],
-      ['id'],
-      ['event', 'id'],
-    ])
-  );
+  const fmt = (d) => d.toISOString().slice(0, 10);
 
-  const homeApiTeamId = toNumber(
-    pickValue(rawFixture, [
-      ['home_team_id'],
-      ['hometeamid'],
-      ['team_home_id'],
-      ['home', 'id'],
-      ['home_team', 'id'],
-    ])
-  );
-  const awayApiTeamId = toNumber(
-    pickValue(rawFixture, [
-      ['away_team_id'],
-      ['awayteamid'],
-      ['team_away_id'],
-      ['away', 'id'],
-      ['away_team', 'id'],
-    ])
-  );
+  console.log(`  📡 Partite ${competition.code} dal ${fmt(dateFrom)} al ${fmt(dateTo)}...`);
 
-  return {
-    api_fixture_id: eventId,
-    league_id: league.id,
-    stagione: SEASON,
-    data_ora:
-      toIsoDate(
-        pickValue(rawFixture, [
-          ['event_date'],
-          ['match_date'],
-          ['date'],
-          ['kickoff'],
-          ['kick_off'],
-          ['start_time'],
-          ['event', 'date'],
-        ])
-      ) ||
-      toIsoDate(
-        `${pickValue(rawFixture, [['match_day'], ['date']]) || ''} ${
-          pickValue(rawFixture, [['match_time'], ['time']]) || ''
-        }`
-      ) ||
-      new Date().toISOString(),
-    venue: pickValue(rawFixture, [
-      ['venue_name'],
-      ['stadium_name'],
-      ['location'],
-      ['venue'],
-      ['stadium'],
-    ]),
-    round_name: pickValue(rawFixture, [
-      ['round'],
-      ['round_name'],
-      ['stage_name'],
-      ['week'],
-      ['event_round'],
-    ]),
-    gol_casa: toNumber(
-      pickValue(rawFixture, [
-        ['home_score'],
-        ['score_home'],
-        ['goals_home'],
-        ['home', 'score'],
-        ['scores', 'home'],
-      ])
-    ),
-    gol_trasferta: toNumber(
-      pickValue(rawFixture, [
-        ['away_score'],
-        ['score_away'],
-        ['goals_away'],
-        ['away', 'score'],
-        ['scores', 'away'],
-      ])
-    ),
-    stato: mapFixtureStatus(
-      pickValue(rawFixture, [
-        ['status'],
-        ['match_status'],
-        ['event_status'],
-        ['state'],
-        ['event', 'status'],
-      ])
-    ),
-    home_api_team_id: homeApiTeamId,
-    away_api_team_id: awayApiTeamId,
-  };
-}
-
-function normalizePlayer(rawPlayer, localTeamId) {
-  const nationality =
-    pickValue(rawPlayer, [
-      ['nationality'],
-      ['player_country'],
-      ['country_name'],
-      ['country'],
-      ['citizenship'],
-      ['player', 'country'],
-    ]) || null;
-
-  const displayName = pickValue(rawPlayer, [
-    ['player_name'],
-    ['name'],
-    ['player', 'name'],
-    ['full_name'],
-  ]);
-  const nameParts = splitPlayerName(displayName);
-
-  return {
-    api_player_id: toNumber(
-      pickValue(rawPlayer, [
-        ['playerid'],
-        ['player_id'],
-        ['playerId'],
-        ['id'],
-        ['player', 'id'],
-      ])
-    ),
-    nome: nameParts.nome,
-    cognome: nameParts.cognome,
-    ruolo:
-      pickValue(rawPlayer, [
-        ['position'],
-        ['position_name'],
-        ['role'],
-        ['player_position'],
-        ['player', 'position'],
-      ]) || 'attaccante',
-    eta: toNumber(
-      pickValue(rawPlayer, [['age'], ['player_age'], ['player', 'age']])
-    ),
-    nazionalita: nationality,
-    numero_maglia: toNumber(
-      pickValue(rawPlayer, [
-        ['shirt_number'],
-        ['number'],
-        ['player_number'],
-        ['squad_number'],
-      ])
-    ),
-    gol_fatti: 0,
-    assist: 0,
-    foto_url: pickValue(rawPlayer, [
-      ['player_image'],
-      ['photo'],
-      ['image'],
-      ['player_photo'],
-      ['player', 'image'],
-    ]),
-    id_squadra: localTeamId,
-  };
-}
-
-function isTargetLeague(rawLeague) {
-  const league = normalizeLeague(rawLeague);
-  const leagueName = normalizeText(league.nome);
-  const countryName = normalizeText(league.paese);
-
-  return (
-    league.id &&
-    TARGET_LEAGUES.some((target) => normalizeText(target) === leagueName) &&
-    (!countryName || countryName.includes(normalizeText(TARGET_COUNTRY)))
-  );
-}
-
-function isItalianPlayer(player) {
-  if (!ONLY_ITALIAN_PLAYERS) {
-    return true;
-  }
-
-  const nationality = normalizeText(player.nazionalita);
-  return ['italy', 'italian', 'italia'].includes(nationality);
-}
-
-async function fetchTargetLeagues() {
-  console.log('Ricerca leghe italiane Serie A e Serie B...');
-
-  try {
-    const { records, path: usedPath } = await requestCandidate('leghe', [
-      { path: slugifyToolPath('get leagues list all with countries'), params: {} },
-      { path: slugifyToolPath('get leagues list all'), params: {} },
-      {
-        path: slugifyToolPath('get search leagues'),
-        params: { query: TARGET_COUNTRY },
-      },
-      {
-        path: slugifyToolPath('get search leagues'),
-        params: { search: TARGET_COUNTRY },
-      },
-    ]);
-
-    const leagues = records.map(normalizeLeague).filter((league) =>
-      isTargetLeague(league)
-    );
-
-    if (leagues.length > 0) {
-      console.log(`Leghe trovate tramite ${usedPath}: ${leagues.map((league) => league.nome).join(', ')}`);
-      return leagues;
-    }
-  } catch (error) {
-    console.warn('Ricerca automatica leghe fallita:', error.message);
-  }
-
-  if (FALLBACK_LEAGUE_IDS.length > 0) {
-    return FALLBACK_LEAGUE_IDS.map((id, index) => ({
-      id,
-      nome: TARGET_LEAGUES[index] || `League ${id}`,
-      paese: TARGET_COUNTRY,
-    }));
-  }
-
-  throw new Error(
-    'Impossibile trovare Serie A e Serie B. Imposta FOOTBALL_LEAGUE_IDS con gli ID del provider.'
-  );
-}
-
-async function fetchLeagueTeams(league) {
-  console.log(`Recupero squadre per ${league.nome} (${league.id})...`);
-
-  const { records } = await requestCandidate(`squadre ${league.nome}`, [
-    {
-      path: slugifyToolPath('get teams all list by league id'),
-      params: { leagueid: league.id },
-    },
-    {
-      path: slugifyToolPath('get teams home list by league id'),
-      params: { leagueid: league.id },
-    },
-    {
-      path: slugifyToolPath('get teams away list by league id'),
-      params: { leagueid: league.id },
-    },
-    {
-      path: slugifyToolPath('get standing all by league id'),
-      params: { leagueid: league.id },
-    },
-  ]);
-
-  const teams = records
-    .map((record) => normalizeTeam(record, league.nome, league.id))
-    .filter((team) => team.api_team_id && team.nome)
-    .filter((team) => normalizeText(team.paese || TARGET_COUNTRY).includes('italy'));
-
-  const dedupedTeams = new Map();
-  teams.forEach((team) => {
-    if (!dedupedTeams.has(team.api_team_id)) {
-      dedupedTeams.set(team.api_team_id, team);
-    }
+  const data = await fetchEndpoint(`/competitions/${competition.code}/matches`, {
+    season:   SEASON,
+    dateFrom: fmt(dateFrom),
+    dateTo:   fmt(dateTo),
   });
+  await wait(REQUEST_DELAY_MS);
 
-  return [...dedupedTeams.values()];
+  return (data?.matches || []).map((m) => ({
+    api_fixture_id:   m.id,
+    league_id:        competition.id,
+    stagione:         SEASON,
+    data_ora:         m.utcDate,
+    venue:            m.venue || null,
+    round_name:       m.matchday ? `Giornata ${m.matchday}` : null,
+    stato:            mapStatus(m.status),
+    gol_casa:         m.score?.fullTime?.home  ?? null,
+    gol_trasferta:    m.score?.fullTime?.away  ?? null,
+    home_api_team_id: m.homeTeam.id,
+    away_api_team_id: m.awayTeam.id,
+  }));
 }
 
-async function fetchLeagueFixtures(league) {
-  console.log(`Recupero partite per ${league.nome} (${league.id})...`);
+// ─── Raccolta dati: Marcatori ──────────────────────────────────────────────────
 
-  const { records } = await requestCandidate(`partite ${league.nome}`, [
-    {
-      path: slugifyToolPath('get all matches events by league id'),
-      params: { leagueid: league.id },
-    },
-    {
-      path: slugifyToolPath('get search matches'),
-      params: { leagueid: league.id },
-    },
-  ]);
-
-  return records
-    .map((record) => normalizeFixture(record, league))
-    .filter(
-      (fixture) =>
-        fixture.api_fixture_id &&
-        fixture.home_api_team_id &&
-        fixture.away_api_team_id &&
-        fixture.home_api_team_id !== fixture.away_api_team_id
-    );
-}
-
-async function fetchLeagueTopPlayers(league, type) {
-  const toolName =
-    type === 'assists' ? 'get top players by assists' : 'get top players by goals';
-
-  try {
-    const { records } = await requestCandidate(`${type} ${league.nome}`, [
-      { path: slugifyToolPath(toolName), params: { leagueid: league.id } },
-    ]);
-
-    const index = new Map();
-
-    records.forEach((record) => {
-      const playerId = toNumber(
-        pickValue(record, [['playerid'], ['player_id'], ['id'], ['player', 'id']])
-      );
-      const playerName = normalizeText(
-        pickValue(record, [['player_name'], ['name'], ['player', 'name']])
-      );
-      const value = toNumber(
-        pickValue(record, [
-          ['goals'],
-          ['goal'],
-          ['total_goals'],
-          ['assists'],
-          ['total_assists'],
-          ['stat'],
-          ['value'],
-        ])
-      );
-
-      if (!playerId && !playerName) {
-        return;
-      }
-
-      index.set(playerId || playerName, value || 0);
-    });
-
-    return index;
-  } catch (_error) {
-    return new Map();
-  }
-}
-
-async function fetchTeamPlayers(team, statIndexes) {
-  console.log(`Recupero giocatori per ${team.nome}...`);
-
-  let records = [];
-
-  try {
-    const response = await requestCandidate(`giocatori ${team.nome}`, [
-      {
-        path: slugifyToolPath('get players list all by team id'),
-        params: { teamid: team.api_team_id },
-      },
-      {
-        path: slugifyToolPath('get team detail by team id'),
-        params: { teamid: team.api_team_id },
-      },
-    ]);
-    records = response.records;
-  } catch (error) {
-    console.warn(`Giocatori non disponibili per ${team.nome}: ${error.message}`);
-    return [];
-  }
-
-  const players = records
-    .map((record) => normalizePlayer(record, team.id_squadra))
-    .filter((player) => player.api_player_id && player.nome)
-    .filter(isItalianPlayer);
-
-  const dedupedPlayers = new Map();
-
-  players.forEach((player) => {
-    const key = player.api_player_id;
-    const goals =
-      statIndexes.goals.get(player.api_player_id) ||
-      statIndexes.goals.get(normalizeText(`${player.nome} ${player.cognome}`));
-    const assists =
-      statIndexes.assists.get(player.api_player_id) ||
-      statIndexes.assists.get(normalizeText(`${player.nome} ${player.cognome}`));
-
-    player.gol_fatti = goals || 0;
-    player.assist = assists || 0;
-
-    if (!dedupedPlayers.has(key)) {
-      dedupedPlayers.set(key, player);
-    }
+/**
+ * GET /v4/competitions/{code}/scorers?limit=N
+ * Risposta: { scorers: [ { player: {id, name, position, nationality,
+ *                                   dateOfBirth, shirtNumber},
+ *                          team: {id}, goals, assists, penalties } ] }
+ */
+async function fetchScorers(competition) {
+  console.log(`  📡 Top marcatori ${competition.code}...`);
+  const data = await fetchEndpoint(`/competitions/${competition.code}/scorers`, {
+    season: SEASON,
+    limit:  TOP_SCORERS_LIMIT,
   });
+  await wait(REQUEST_DELAY_MS);
 
-  return [...dedupedPlayers.values()];
+  return (data?.scorers || []).map((s) => {
+    const nameParts = splitPlayerName(s.player?.name || '');
+
+    const eta = s.player?.dateOfBirth
+      ? Math.floor((Date.now() - new Date(s.player.dateOfBirth)) / (365.25 * 24 * 3600 * 1000))
+      : null;
+
+    return {
+      api_player_id: s.player?.id,
+      nome:          nameParts.nome,
+      cognome:       nameParts.cognome,
+      ruolo:         mapPosition(s.player?.position),
+      nazionalita:   s.player?.nationality  || null,
+      eta:           eta,
+      numero_maglia: s.player?.shirtNumber  || null,
+      gol_fatti:     s.goals   || 0,
+      assist:        s.assists || 0,
+      foto_url:      null,
+      api_team_id:   s.team?.id,
+    };
+  });
 }
+
+// ─── Orchestrazione ────────────────────────────────────────────────────────────
+
+async function collectAll() {
+  const allTeamsMap   = new Map();
+  const allMatches    = [];
+  const allPlayersMap = new Map();
+
+  for (const competition of TARGET_COMPETITIONS) {
+    console.log(`\n🏆 Elaborazione: ${competition.name} (${competition.code})`);
+
+    // 1. Squadre dalla classifica
+    const standingTeams = await fetchStandings(competition);
+
+    // 2. Arricchimento con dettagli squadra
+    console.log(`  🔍 Arricchimento ${standingTeams.length} squadre...`);
+    for (const team of standingTeams) {
+      const detail = await fetchTeamDetail(team.api_team_id);
+      allTeamsMap.set(team.api_team_id, { ...team, ...detail });
+    }
+
+    // 3. Partite
+    const matches = await fetchMatches(competition);
+    allMatches.push(...matches);
+
+    // 4. Top marcatori
+    const players = await fetchScorers(competition);
+    for (const p of players) {
+      if (p.api_player_id) allPlayersMap.set(p.api_player_id, p);
+    }
+  }
+
+  return {
+    teams:   [...allTeamsMap.values()],
+    matches: allMatches,
+    players: [...allPlayersMap.values()],
+  };
+}
+
+// ─── Scrittura DB ──────────────────────────────────────────────────────────────
 
 async function upsertTeam(connection, team, index) {
   const paletteIndex = Math.abs((team.api_team_id || index) % TEAM_COLORS.length);
+  const sigla        = team.tla || makeShortCode(team.nome);
 
   await connection.query(
-    `
-      INSERT INTO squadre (
-        api_team_id,
-        nome,
-        citta,
-        anno_fondazione,
-        stadio,
-        logo_url,
-        logo_sigla,
-        colore,
-        campionato,
-        paese
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        nome = VALUES(nome),
-        citta = VALUES(citta),
+    `INSERT INTO squadre (
+        api_team_id, nome, citta, anno_fondazione, stadio,
+        logo_url, logo_sigla, colore, campionato, paese
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+        nome            = VALUES(nome),
+        citta           = VALUES(citta),
         anno_fondazione = VALUES(anno_fondazione),
-        stadio = VALUES(stadio),
-        logo_url = VALUES(logo_url),
-        logo_sigla = VALUES(logo_sigla),
-        colore = VALUES(colore),
-        campionato = VALUES(campionato),
-        paese = VALUES(paese)
-    `,
+        stadio          = VALUES(stadio),
+        logo_url        = VALUES(logo_url),
+        logo_sigla      = VALUES(logo_sigla),
+        campionato      = VALUES(campionato),
+        paese           = VALUES(paese)`,
     [
       team.api_team_id,
       team.nome,
-      team.citta || null,
-      team.anno_fondazione || null,
-      team.stadio || null,
-      team.logo_url || null,
-      makeShortCode(team.nome),
+      team.citta,
+      team.anno_fondazione,
+      team.stadio,
+      team.crest_url,
+      sigla,
       TEAM_COLORS[paletteIndex],
-      team.campionato,
-      team.paese || TARGET_COUNTRY,
+      team.competition_name,
+      team.paese || 'Italy',
     ]
   );
 }
 
 async function mapLocalTeams(connection, apiTeamIds) {
-  if (apiTeamIds.length === 0) {
-    return new Map();
-  }
+  if (apiTeamIds.length === 0) return new Map();
 
-  const placeholders = apiTeamIds.map(() => '?').join(', ');
+  const ph = apiTeamIds.map(() => '?').join(', ');
   const [rows] = await connection.query(
-    `SELECT id_squadra, api_team_id FROM squadre WHERE api_team_id IN (${placeholders})`,
+    `SELECT id_squadra, api_team_id FROM squadre WHERE api_team_id IN (${ph})`,
     apiTeamIds
   );
-
   return new Map(rows.map((row) => [row.api_team_id, row.id_squadra]));
 }
 
-async function cleanupNonItalianScope(connection, localTeamIds) {
-  const placeholders = localTeamIds.map(() => '?').join(', ');
+async function cleanupScope(connection, localTeamIds) {
+  if (localTeamIds.length === 0) return;
+
+  const ph = localTeamIds.map(() => '?').join(', ');
 
   await connection.query(
-    `DELETE FROM giocatori WHERE id_squadra NOT IN (${placeholders})`,
+    `DELETE FROM giocatori WHERE id_squadra NOT IN (${ph})`,
     localTeamIds
   );
   await connection.query(
     `DELETE FROM partite
-     WHERE id_squadra_casa NOT IN (${placeholders})
-        OR id_squadra_trasferta NOT IN (${placeholders})`,
+     WHERE id_squadra_casa NOT IN (${ph})
+        OR id_squadra_trasferta NOT IN (${ph})`,
     [...localTeamIds, ...localTeamIds]
-  );
-  await connection.query(
-    `DELETE FROM squadre WHERE id_squadra NOT IN (${placeholders})`,
-    localTeamIds
   );
 }
 
-async function replacePlayers(connection, players, allTeamIds) {
-  const targetTeamIds = [...new Set(allTeamIds)];
+async function replaceMatches(connection, matches, teamMap) {
+  const leagueIds = [...new Set(matches.map((m) => m.league_id))];
 
-  if (targetTeamIds.length > 0) {
-    const placeholders = targetTeamIds.map(() => '?').join(', ');
+  if (leagueIds.length > 0) {
+    const ph = leagueIds.map(() => '?').join(', ');
     await connection.query(
-      `DELETE FROM giocatori WHERE id_squadra IN (${placeholders})`,
-      targetTeamIds
+      `DELETE FROM partite WHERE league_id IN (${ph}) AND stagione = ?`,
+      [...leagueIds, SEASON]
+    );
+  }
+
+  let inserted = 0;
+
+  for (const match of matches) {
+    const homeId = teamMap.get(match.home_api_team_id);
+    const awayId = teamMap.get(match.away_api_team_id);
+
+    if (!homeId || !awayId) continue;
+
+    await connection.query(
+      `INSERT INTO partite (
+          api_fixture_id, league_id, stagione, data_ora, venue,
+          round_name, gol_casa, gol_trasferta, stato,
+          id_squadra_casa, id_squadra_trasferta
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+          league_id            = VALUES(league_id),
+          stagione             = VALUES(stagione),
+          data_ora             = VALUES(data_ora),
+          venue                = VALUES(venue),
+          round_name           = VALUES(round_name),
+          gol_casa             = VALUES(gol_casa),
+          gol_trasferta        = VALUES(gol_trasferta),
+          stato                = VALUES(stato),
+          id_squadra_casa      = VALUES(id_squadra_casa),
+          id_squadra_trasferta = VALUES(id_squadra_trasferta)`,
+      [
+        match.api_fixture_id,
+        match.league_id,
+        match.stagione,
+        toMysqlDate(match.data_ora),
+        match.venue,
+        match.round_name,
+        match.gol_casa,
+        match.gol_trasferta,
+        match.stato,
+        homeId,
+        awayId,
+      ]
+    );
+    inserted++;
+  }
+
+  return inserted;
+}
+
+async function replacePlayers(connection, players, teamMap) {
+  const localTeamIds = [...new Set([...teamMap.values()])];
+
+  if (localTeamIds.length > 0) {
+    const ph = localTeamIds.map(() => '?').join(', ');
+    await connection.query(
+      `DELETE FROM giocatori WHERE id_squadra IN (${ph})`,
+      localTeamIds
     );
   }
 
   let inserted = 0;
 
   for (const player of players) {
+    const localTeamId = teamMap.get(player.api_team_id);
+    if (!localTeamId || !player.api_player_id) continue;
+
     await connection.query(
-      `
-        INSERT INTO giocatori (
-          api_player_id,
-          nome,
-          cognome,
-          ruolo,
-          eta,
-          nazionalita,
-          numero_maglia,
-          gol_fatti,
-          assist,
-          foto_url,
-          id_squadra
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-          nome = VALUES(nome),
-          cognome = VALUES(cognome),
-          ruolo = VALUES(ruolo),
-          eta = VALUES(eta),
-          nazionalita = VALUES(nazionalita),
+      `INSERT INTO giocatori (
+          api_player_id, nome, cognome, ruolo, eta,
+          nazionalita, numero_maglia, gol_fatti, assist,
+          foto_url, id_squadra
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+          nome          = VALUES(nome),
+          cognome       = VALUES(cognome),
+          ruolo         = VALUES(ruolo),
+          eta           = VALUES(eta),
+          nazionalita   = VALUES(nazionalita),
           numero_maglia = VALUES(numero_maglia),
-          gol_fatti = VALUES(gol_fatti),
-          assist = VALUES(assist),
-          foto_url = VALUES(foto_url),
-          id_squadra = VALUES(id_squadra)
-      `,
+          gol_fatti     = VALUES(gol_fatti),
+          assist        = VALUES(assist),
+          foto_url      = VALUES(foto_url),
+          id_squadra    = VALUES(id_squadra)`,
       [
         player.api_player_id,
         player.nome,
@@ -879,69 +476,10 @@ async function replacePlayers(connection, players, allTeamIds) {
         player.gol_fatti,
         player.assist,
         player.foto_url,
-        player.id_squadra,
+        localTeamId,
       ]
     );
-    inserted += 1;
-  }
-
-  return inserted;
-}
-
-async function replaceFixtures(connection, fixtures, teamMap) {
-  let inserted = 0;
-
-  for (const fixture of fixtures) {
-    const homeTeamId = teamMap.get(fixture.home_api_team_id);
-    const awayTeamId = teamMap.get(fixture.away_api_team_id);
-
-    if (!homeTeamId || !awayTeamId) {
-      continue;
-    }
-
-    await connection.query(
-      `
-        INSERT INTO partite (
-          api_fixture_id,
-          league_id,
-          stagione,
-          data_ora,
-          venue,
-          round_name,
-          gol_casa,
-          gol_trasferta,
-          stato,
-          id_squadra_casa,
-          id_squadra_trasferta
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-          league_id = VALUES(league_id),
-          stagione = VALUES(stagione),
-          data_ora = VALUES(data_ora),
-          venue = VALUES(venue),
-          round_name = VALUES(round_name),
-          gol_casa = VALUES(gol_casa),
-          gol_trasferta = VALUES(gol_trasferta),
-          stato = VALUES(stato),
-          id_squadra_casa = VALUES(id_squadra_casa),
-          id_squadra_trasferta = VALUES(id_squadra_trasferta)
-      `,
-      [
-        fixture.api_fixture_id,
-        fixture.league_id,
-        fixture.stagione,
-        toMysqlDate(fixture.data_ora),
-        fixture.venue || null,
-        fixture.round_name || null,
-        fixture.gol_casa,
-        fixture.gol_trasferta,
-        fixture.stato,
-        homeTeamId,
-        awayTeamId,
-      ]
-    );
-    inserted += 1;
+    inserted++;
   }
 
   return inserted;
@@ -949,134 +487,69 @@ async function replaceFixtures(connection, fixtures, teamMap) {
 
 async function writeSyncLog(connection, stato, messaggio, counters) {
   await connection.query(
-    `
-      INSERT INTO sync_log (
-        sorgente,
-        league_id,
-        stagione,
-        stato,
-        squadre_importate,
-        partite_importate,
-        giocatori_importati,
-        messaggio
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `,
+    `INSERT INTO sync_log (
+        sorgente, league_id, stagione, stato,
+        squadre_importate, partite_importate, giocatori_importati, messaggio
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      RAPIDAPI_HOST,
-      0,
+      'football-data.org',
+      TARGET_COMPETITIONS[0]?.id || 0,
       SEASON,
       stato,
-      counters.teams || 0,
+      counters.teams    || 0,
       counters.fixtures || 0,
-      counters.players || 0,
-      messaggio || null,
+      counters.players  || 0,
+      messaggio,
     ]
   );
 }
 
+// ─── Entry point ──────────────────────────────────────────────────────────────
+
 async function syncLeagueData() {
-  if (!RAPIDAPI_KEY || RAPIDAPI_KEY === 'your_rapidapi_key_here') {
-    throw new Error('RAPIDAPI_KEY non configurata nel file .env');
+  if (!API_KEY || API_KEY === 'your_football_data_api_key_here') {
+    throw new Error('FOOTBALL_DATA_API_KEY non configurata nel file .env');
   }
 
   await db.ensureSchema();
 
-  const leagues = await fetchTargetLeagues();
-  if (leagues.length === 0) {
-    throw new Error('Nessuna lega italiana target trovata');
-  }
+  const { teams, matches, players } = await collectAll();
 
-  const allTeams = [];
-  const allFixtures = [];
-  const allPlayers = [];
-
-  for (const league of leagues) {
-    const teams = await fetchLeagueTeams(league);
-    allTeams.push(...teams);
-    await wait(REQUEST_DELAY_MS);
-
-    const fixtures = await fetchLeagueFixtures(league);
-    allFixtures.push(...fixtures);
-    await wait(REQUEST_DELAY_MS);
-  }
-
-  const dedupedTeams = [...new Map(allTeams.map((team) => [team.api_team_id, team])).values()];
-
-  if (dedupedTeams.length === 0) {
-    throw new Error('Nessuna squadra italiana trovata per Serie A e Serie B');
-  }
+  console.log(`\n📊 Raccolti: ${teams.length} squadre, ${matches.length} partite, ${players.length} giocatori`);
+  console.log('💾 Scrittura sul database...');
 
   const connection = await db.pool.getConnection();
 
   try {
     await connection.beginTransaction();
 
-    for (const [index, team] of dedupedTeams.entries()) {
-      await upsertTeam(connection, team, index);
+    for (const [i, team] of teams.entries()) {
+      await upsertTeam(connection, team, i);
     }
 
-    const teamMap = await mapLocalTeams(
-      connection,
-      dedupedTeams.map((team) => team.api_team_id)
-    );
+    const teamMap = await mapLocalTeams(connection, teams.map((t) => t.api_team_id));
+    const localTeamIds = [...teamMap.values()];
 
-    const teamsWithLocalIds = dedupedTeams
-      .map((team) => ({ ...team, id_squadra: teamMap.get(team.api_team_id) }))
-      .filter((team) => team.id_squadra);
+    await cleanupScope(connection, localTeamIds);
 
-    if (teamsWithLocalIds.length === 0) {
-      throw new Error('Nessuna squadra mappata nel database dopo l import');
-    }
+    const importedFixtures = await replaceMatches(connection, matches, teamMap);
+    const importedPlayers  = await replacePlayers(connection, players, teamMap);
 
-    await cleanupNonItalianScope(
-      connection,
-      teamsWithLocalIds.map((team) => team.id_squadra)
-    );
-
-    const importedFixtures = await replaceFixtures(connection, allFixtures, teamMap);
-
-    for (const league of leagues) {
-      const statIndexes = {
-        goals: await fetchLeagueTopPlayers(league, 'goals'),
-        assists: await fetchLeagueTopPlayers(league, 'assists'),
-      };
-
-      for (const team of teamsWithLocalIds.filter((entry) => entry.league_id === league.id)) {
-        const players = await fetchTeamPlayers(team, statIndexes);
-        allPlayers.push(...players);
-        await wait(REQUEST_DELAY_MS);
-      }
-    }
-
-    const importedPlayers = await replacePlayers(
-      connection,
-      allPlayers,
-      teamsWithLocalIds.map((team) => team.id_squadra)
-    );
-
-    const counters = {
-      teams: teamsWithLocalIds.length,
-      fixtures: importedFixtures,
-      players: importedPlayers,
-    };
+    const counters = { teams: teams.length, fixtures: importedFixtures, players: importedPlayers };
 
     await writeSyncLog(
       connection,
       'success',
-      `Sync completata per ${TARGET_COUNTRY}: ${leagues.map((league) => league.nome).join(', ')}`,
+      `Sync da football-data.org: ${TARGET_COMPETITIONS.map((c) => c.name).join(', ')}`,
       counters
     );
-    await connection.commit();
 
+    await connection.commit();
     return counters;
+
   } catch (error) {
     await connection.rollback();
-    try {
-      await writeSyncLog(connection, 'error', error.message, {});
-    } catch (_secondaryError) {
-      // Ignore secondary log failures.
-    }
+    try { await writeSyncLog(connection, 'error', error.message, {}); } catch (_) {}
     throw error;
   } finally {
     connection.release();
@@ -1084,21 +557,34 @@ async function syncLeagueData() {
 }
 
 async function main() {
-  console.log('Avvio pipeline Data Engineering');
-  console.log(`Provider: ${RAPIDAPI_HOST}`);
-  console.log(`Country: ${TARGET_COUNTRY}`);
-  console.log(`Leagues: ${TARGET_LEAGUES.join(', ')}`);
-  console.log(`Season reference: ${SEASON}`);
+  console.log('╔══════════════════════════════════════════════════════╗');
+  console.log('║   Sport Analytics – Data Engineering Pipeline        ║');
+  console.log('║   Sorgente: football-data.org (API v4)               ║');
+  console.log('╚══════════════════════════════════════════════════════╝');
+  console.log(`Competizioni : ${TARGET_COMPETITIONS.map((c) => `${c.name} (${c.code})`).join(', ')}`);
+  console.log(`Stagione     : ${SEASON}`);
+  console.log(`Finestra     : -${MATCH_LOOKBACK_DAYS} / +${MATCH_LOOKAHEAD_DAYS} giorni`);
+  console.log(`Delay req.   : ${REQUEST_DELAY_MS}ms`);
+  console.log('');
 
   try {
     const counters = await syncLeagueData();
-    console.log(
-      `Sync completata: ${counters.teams} squadre, ${counters.fixtures} partite, ${counters.players} giocatori`
-    );
+    console.log('');
+    console.log('✅ Sync completata con successo!');
+    console.log(`   Squadre importate  : ${counters.teams}`);
+    console.log(`   Partite importate  : ${counters.fixtures}`);
+    console.log(`   Giocatori importati: ${counters.players}`);
     process.exit(0);
   } catch (error) {
-    const apiMessage = error.response?.data?.message;
-    console.error('Sync fallita:', apiMessage || error.message);
+    console.error('');
+    console.error('❌ Sync fallita:', error.response?.data?.message || error.message);
+    if (error.response?.status === 403) {
+      console.error('   → Verifica che FOOTBALL_DATA_API_KEY sia corretta e attiva.');
+      console.error('   → Registrati su https://www.football-data.org/client/register');
+    }
+    if (error.response?.status === 400) {
+      console.error('   → Stagione o codice competizione non validi per il tuo piano.');
+    }
     process.exit(1);
   }
 }
@@ -1107,6 +593,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = {
-  syncLeagueData,
-};
+module.exports = { syncLeagueData };

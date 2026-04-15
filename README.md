@@ -21,7 +21,8 @@ sport-analytics/
 │   ├── middleware/
 │   │   └── auth.js          # JWT middleware
 │   ├── scripts/
-│   │   └── dataEngineering.js  # Script raccolta dati API-Football
+│   │   ├── dataeng.js          # Script raccolta dati football-data.org
+│   │   └── dataEngineering.js  # Alias legacy dello script
 │   ├── db.js                # Connessione MySQL
 │   ├── server.js            # Entry point Express
 │   ├── database.sql         # Schema + seed dati
@@ -125,15 +126,15 @@ L'algoritmo si basa su **Analisi della Forma Recente + Forza Attacco/Difesa**:
 ## 🔧 Script Data Engineering
 
 ```bash
-# Configura RAPIDAPI_KEY nel .env, poi:
+# Configura FOOTBALL_DATA_API_KEY nel .env, poi:
 cd backend
-node scripts/dataEngineering.js
+node scripts/dataeng.js
 ```
 
 Lo script:
-1. Recupera squadre e partite da **API-Football** (RapidAPI)
+1. Recupera squadre, partite e marcatori da **football-data.org**
 2. Esegue il parsing e la pulizia dei dati (data cleaning)
-3. Inserisce i dati nel database MySQL evitando duplicati
+3. Inserisce i dati nel database MySQL evitando duplicati e aggiorna logo, stadio, anno di fondazione, campionato e paese
 
 > Senza API key, il DB viene popolato con i dati seed inclusi in `database.sql`
 

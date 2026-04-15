@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts';
+import TeamLogo from '../components/TeamLogo';
 import api from '../utils/api';
 
 function formatDate(d) {
@@ -45,14 +46,14 @@ export default function TeamDetail() {
       <div className="card" style={{ marginBottom:'1.25rem', background: `linear-gradient(135deg, ${squadra.colore}22 0%, var(--bg-card) 60%)`, borderColor: squadra.colore + '44' }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:'1rem' }}>
           <div style={{ display:'flex', alignItems:'center', gap:'1.25rem' }}>
-            <div style={{
-              width:72, height:72,
-              background: squadra.colore + '33',
-              border:`2px solid ${squadra.colore}`,
-              borderRadius:12,
-              display:'flex', alignItems:'center', justifyContent:'center',
-              fontFamily:'Barlow Condensed', fontWeight:800, fontSize:'1.3rem', color:squadra.colore
-            }}>{squadra.logo_sigla}</div>
+            <TeamLogo
+              logoUrl={squadra.logo_url}
+              sigla={squadra.logo_sigla}
+              color={squadra.colore}
+              alt={`Logo ${squadra.nome}`}
+              size={72}
+              rounded={12}
+            />
             <div>
               <h1 style={{ fontFamily:'Barlow Condensed', fontSize:'2rem', fontWeight:800 }}>{squadra.nome}</h1>
               <div style={{ color:'var(--text-muted)', fontSize:'.88rem', display:'flex', gap:'1.5rem', marginTop:'.25rem' }}>
@@ -179,7 +180,14 @@ export default function TeamDetail() {
               }}>
                 <span className={`result-badge ${ris}`}>{ris}</span>
                 <div style={{ display:'flex', alignItems:'center', gap:'.5rem', fontSize:'.88rem' }}>
-                  <span className="team-badge" style={{ background:p.colore_casa+'33', color:p.colore_casa, fontSize:'.6rem', width:28, height:28 }}>{p.logo_casa}</span>
+                  <TeamLogo
+                    logoUrl={p.logo_casa_url}
+                    sigla={p.logo_casa}
+                    color={p.colore_casa}
+                    alt={`Logo ${p.nome_casa}`}
+                    size={28}
+                    rounded={8}
+                  />
                   <span style={{ fontWeight: isCasa ? 700 : 400 }}>{p.nome_casa}</span>
                 </div>
                 <div style={{ fontFamily:'Barlow Condensed', fontSize:'1.2rem', fontWeight:800, textAlign:'center', minWidth:60 }}>
@@ -187,7 +195,14 @@ export default function TeamDetail() {
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:'.5rem', justifyContent:'flex-end', fontSize:'.88rem' }}>
                   <span style={{ fontWeight: !isCasa ? 700 : 400 }}>{p.nome_trasferta}</span>
-                  <span className="team-badge" style={{ background:p.colore_trasferta+'33', color:p.colore_trasferta, fontSize:'.6rem', width:28, height:28 }}>{p.logo_trasferta}</span>
+                  <TeamLogo
+                    logoUrl={p.logo_trasferta_url}
+                    sigla={p.logo_trasferta}
+                    color={p.colore_trasferta}
+                    alt={`Logo ${p.nome_trasferta}`}
+                    size={28}
+                    rounded={8}
+                  />
                 </div>
                 <span style={{ fontSize:'.75rem', color:'var(--text-muted)', minWidth:70, textAlign:'right' }}>{formatDate(p.data_ora)}</span>
               </div>

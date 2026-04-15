@@ -237,6 +237,16 @@ button { cursor: pointer; font-family: inherit; }
   flex-shrink: 0;
 }
 
+.team-crest {
+  display: inline-block;
+  object-fit: contain;
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(255,255,255,.96) 0%, rgba(226,232,240,.9) 100%);
+  border: 1px solid rgba(148,163,184,.22);
+  padding: 3px;
+  flex-shrink: 0;
+}
+
 /* ── Live badge ──────────────────────────────── */
 .live-dot {
   display: inline-flex;

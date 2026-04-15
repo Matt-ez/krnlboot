@@ -71,8 +71,8 @@ router.get('/:id', authMiddleware, async (req, res) => {
     // Ultime 10 partite
     const [partite] = await db.query(
       `SELECT p.*, 
-              s1.nome AS nome_casa, s1.logo_sigla AS logo_casa, s1.colore AS colore_casa,
-              s2.nome AS nome_trasferta, s2.logo_sigla AS logo_trasferta, s2.colore AS colore_trasferta
+              s1.nome AS nome_casa, s1.logo_sigla AS logo_casa, s1.logo_url AS logo_casa_url, s1.colore AS colore_casa,
+              s2.nome AS nome_trasferta, s2.logo_sigla AS logo_trasferta, s2.logo_url AS logo_trasferta_url, s2.colore AS colore_trasferta
        FROM partite p
        JOIN squadre s1 ON p.id_squadra_casa = s1.id_squadra
        JOIN squadre s2 ON p.id_squadra_trasferta = s2.id_squadra

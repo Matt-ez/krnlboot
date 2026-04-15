@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import TeamLogo from '../components/TeamLogo';
 import api from '../utils/api';
 
 function formatDateTime(d) {
@@ -23,7 +24,14 @@ function MatchCard({ p, showScore = true }) {
     }}>
       {/* Casa */}
       <div style={{ display:'flex', alignItems:'center', gap:'.75rem' }}>
-        <span className="team-badge" style={{ background: p.colore_casa+'33', color: p.colore_casa, fontSize:'.65rem', width:40, height:40 }}>{p.logo_casa}</span>
+        <TeamLogo
+          logoUrl={p.logo_casa_url}
+          sigla={p.logo_casa}
+          color={p.colore_casa}
+          alt={`Logo ${p.nome_casa}`}
+          size={40}
+          rounded={10}
+        />
         <span style={{ fontWeight:600, fontSize:'1rem' }}>{p.nome_casa}</span>
       </div>
 
@@ -45,7 +53,14 @@ function MatchCard({ p, showScore = true }) {
       {/* Trasferta */}
       <div style={{ display:'flex', alignItems:'center', gap:'.75rem', justifyContent:'flex-end' }}>
         <span style={{ fontWeight:600, fontSize:'1rem' }}>{p.nome_trasferta}</span>
-        <span className="team-badge" style={{ background: p.colore_trasferta+'33', color: p.colore_trasferta, fontSize:'.65rem', width:40, height:40 }}>{p.logo_trasferta}</span>
+        <TeamLogo
+          logoUrl={p.logo_trasferta_url}
+          sigla={p.logo_trasferta}
+          color={p.colore_trasferta}
+          alt={`Logo ${p.nome_trasferta}`}
+          size={40}
+          rounded={10}
+        />
       </div>
     </div>
   );

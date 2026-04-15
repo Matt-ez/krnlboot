@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import TeamLogo from '../components/TeamLogo';
 import api from '../utils/api';
 
 export default function Teams() {
@@ -29,11 +30,6 @@ export default function Teams() {
     
       <h1 className="page-title">Squadre</h1>
 
-      <div className="tabs">
-        {['Tutte','Serie A','Serie B'].map(t => (
-          <button key={t} className={`tab ${tab===t ? 'active' : ''}`} onClick={() => setTab(t)}>{t}</button>
-        ))}
-      </div>
 
       <div className="card">
         <table className="data-table">
@@ -66,12 +62,14 @@ export default function Teams() {
                 </td>
                 <td>
                   <div style={{ display:'flex', alignItems:'center', gap:'.75rem' }}>
-                    <span className="team-badge" style={{
-                      background: s.colore + '33',
-                      color: s.colore,
-                      fontSize:'.65rem',
-                      width:36, height:36
-                    }}>{s.logo_sigla}</span>
+                    <TeamLogo
+                      logoUrl={s.logo_url}
+                      sigla={s.logo_sigla}
+                      color={s.colore}
+                      alt={`Logo ${s.nome}`}
+                      size={36}
+                      rounded={10}
+                    />
                     <div>
                       <div style={{ fontWeight:600 }}>{s.nome}</div>
                       <div style={{ fontSize:'.75rem', color:'var(--text-muted)' }}>{s.citta}</div>

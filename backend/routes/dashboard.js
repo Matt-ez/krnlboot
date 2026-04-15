@@ -8,18 +8,18 @@ router.get('/', authMiddleware, async (req, res) => {
   try {
     // Top marcatori (top 5)
     const [topMarcatori] = await db.query(
-      `SELECT g.*, s.nome AS nome_squadra, s.colore, s.logo_sigla
+      `SELECT g.*, s.nome AS nome_squadra, s.colore, s.logo_sigla, s.logo_url
        FROM giocatori g
        JOIN squadre s ON g.id_squadra = s.id_squadra
-       ORDER BY g.gol_fatti DESC
+       ORDER BY g.gol_fatti DESC, g.assist DESC
        LIMIT 5`
     );
 
     // Partite di oggi / recenti
     const [partiteRecenti] = await db.query(
       `SELECT p.*,
-              s1.nome AS nome_casa, s1.logo_sigla AS logo_casa, s1.colore AS colore_casa,
-              s2.nome AS nome_trasferta, s2.logo_sigla AS logo_trasferta, s2.colore AS colore_trasferta
+              s1.nome AS nome_casa, s1.logo_sigla AS logo_casa, s1.logo_url AS logo_casa_url, s1.colore AS colore_casa,
+              s2.nome AS nome_trasferta, s2.logo_sigla AS logo_trasferta, s2.logo_url AS logo_trasferta_url, s2.colore AS colore_trasferta
        FROM partite p
        JOIN squadre s1 ON p.id_squadra_casa = s1.id_squadra
        JOIN squadre s2 ON p.id_squadra_trasferta = s2.id_squadra

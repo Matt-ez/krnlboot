@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import TeamLogo from '../components/TeamLogo';
 import api from '../utils/api';
 
 function PredBar({ label, value, color }) {
@@ -125,13 +126,16 @@ export default function Predictions() {
             border:'1px solid var(--border)'
           }}>
             <div style={{ textAlign:'center' }}>
-              <div className="team-badge" style={{
-                background: result.squadra_casa.colore+'33',
-                color: result.squadra_casa.colore,
-                width:56, height:56, borderRadius:10, fontSize:'1rem', fontWeight:800,
-                display:'flex', alignItems:'center', justifyContent:'center',
-                margin:'0 auto .5rem'
-              }}>{result.squadra_casa.logo_sigla}</div>
+              <div style={{ margin:'0 auto .5rem', width:'fit-content' }}>
+                <TeamLogo
+                  logoUrl={result.squadra_casa.logo_url}
+                  sigla={result.squadra_casa.logo_sigla}
+                  color={result.squadra_casa.colore}
+                  alt={`Logo ${result.squadra_casa.nome}`}
+                  size={56}
+                  rounded={10}
+                />
+              </div>
               <div style={{ fontFamily:'Barlow Condensed', fontSize:'1.2rem', fontWeight:800 }}>{result.squadra_casa.nome}</div>
               <div style={{ fontSize:'.75rem', color:'var(--text-muted)' }}>Casa</div>
             </div>
@@ -144,13 +148,16 @@ export default function Predictions() {
             </div>
 
             <div style={{ textAlign:'center' }}>
-              <div className="team-badge" style={{
-                background: result.squadra_trasferta.colore+'33',
-                color: result.squadra_trasferta.colore,
-                width:56, height:56, borderRadius:10, fontSize:'1rem', fontWeight:800,
-                display:'flex', alignItems:'center', justifyContent:'center',
-                margin:'0 auto .5rem'
-              }}>{result.squadra_trasferta.logo_sigla}</div>
+              <div style={{ margin:'0 auto .5rem', width:'fit-content' }}>
+                <TeamLogo
+                  logoUrl={result.squadra_trasferta.logo_url}
+                  sigla={result.squadra_trasferta.logo_sigla}
+                  color={result.squadra_trasferta.colore}
+                  alt={`Logo ${result.squadra_trasferta.nome}`}
+                  size={56}
+                  rounded={10}
+                />
+              </div>
               <div style={{ fontFamily:'Barlow Condensed', fontSize:'1.2rem', fontWeight:800 }}>{result.squadra_trasferta.nome}</div>
               <div style={{ fontSize:'.75rem', color:'var(--text-muted)' }}>Trasferta</div>
             </div>

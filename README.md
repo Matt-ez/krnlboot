@@ -64,12 +64,11 @@ mysql -u root -p < backend/database.sql
 
 ```bash
 cd backend
-cp .env.example .env
 # Modifica .env con le tue credenziali MySQL
 
 npm install
-npm run dev     # oppure: npm start
-# → Server su http://localhost:3001
+npm start server.js     # oppure: npm start
+# → Server su http://localhost:3006
 ```
 
 ### 3. Frontend
@@ -77,7 +76,7 @@ npm run dev     # oppure: npm start
 ```bash
 cd frontend
 npm install
-npm start
+npm run dev
 # → App su http://localhost:3000
 ```
 

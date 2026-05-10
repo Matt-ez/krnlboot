@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
 const navItems = [
-  { path: '/dashboard',    label: 'Home',             icon: '⌂' },
+  { path: '/dashboard',    label: 'Home',             icon: '🏠' },
   { path: '/teams',        label: 'Squadre',          icon: '⚽' },
   { path: '/matches',      label: 'Partite',          icon: '📅' },
   { path: '/predictions',  label: 'Analisi Predittiva', icon: '📈' },
